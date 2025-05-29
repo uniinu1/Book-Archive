@@ -37,13 +37,30 @@ API를 만들 때 구현 클래스를 공개하지 않고도 객체를 반환할
 - EnumSet 클래스는 원소 수에 따라 하위 클래스 중 하나의 인스턴스를 반환함
   - 원소 수 64개 이하 : long 변수 하나로 관리하는 RegularEnumSet
   - 원소 수 65개 이상 : long 배열 JumboEnumSet
+ 
+```java
+public static <E extends Enum<E>> EnumSet<E> noneOf(Class<E> elementType) {
+    E[] universe = getUniverse(elementType);
+    // 열거형 상수 개수에 따라
+    if (universe.length <= 64) {
+        // 64개 이하: 단일 long 비트마스크로 관리하는 경량 구현체
+        return new RegularEnumSet<>(elementType, universe);
+    } else {
+        // 65개 이상: long 배열을 쓰는 구현체
+        return new JumboEnumSet<>(elementType, universe);
+    }
+}
+```
 
 ## 5. 정적 팩터리 메서드를 작성하는 시점에는 반환할 객체의 클래스가 존재하지 않아도 된다.
 장점 3, 4와 비슷한 개념이다. 이러한 유연성을 제공하는 static 팩토리 매소드는 **서비스 프로바이더** 프레임워크의 근본이다. JDBC를 예로 들고 있다.
+- 서비스 프로바이더 프레임워크란?
+  - 어떤 기능(예: 데이터베이스 연결, 암호화 알고리즘, 로깅 등)을 제공하는 ‘서비스’를 정의하는 인터페이스가 있고, 실제 기능은 이 인터페이스를 구현한 구현체(provider) 에 의해 제공됩니다.
+  - 클라이언트(사용자) 코드는 인터페이스만 알고, 구체 구현체는 프레임워크가 로딩해서 연결해 줍니다.
 
 서비스 프로바이더 프레임워크는 서비스의 구현체를 대표하는 서비스 인터페이스와 구현체를 등록하는데 사용하는 프로바이더 등록 API 그리고 클라이언트가 해당 서비스의 인스턴스를 가져갈 때 사용하는 서비스 엑세스 API가 필수로 필요하다. 부가적으로 서비스 인터페이스의 인스턴스를 제공하는 서비스 프로바이더 인터페이스를 만들 수도 있는데, 그게 없는 경우에는 리플렉션을 사용해서 구현체를 만들어 준다.
 
-JDBC의 경우, driverManager.registerDriver()가 프로바이더 등록 API. DriverManager.getConenction()이 서비스 엑세스 API 그리고 dRIVER가 서비스 프로바이더 인터페이스 역할을 한다. 
+JDBC의 경우, driverManager.registerDriver()가 프로바이더 등록 API. DriverManager.getConenction()이 서비스 엑세스 API 그리고 Driver 서비스 프로바이더 인터페이스 역할을 한다. 
 
 자바6부터는 java.util.ServiceLoader라는 일반적인 용도의 서비스 프로바이더를 제공하지만, JDBC가 그보다 이전에 만들어졌기 대문에 JDBC는 ServiceLoader를 사용하진 않는다.
 
@@ -51,5 +68,19 @@ JDBC의 경우, driverManager.registerDriver()가 프로바이더 등록 API. Dr
 ## 1. public 또는 protected 생성자 없이 static public 메소드만 제공하는 클래스는 상속할 수 없다.
 따라서, Collections 프레임워크에서 제공하는 편의성 구현체(java.util.Collections)는 상속할 수 없다. 오히려 불변 타입(아이템17)인 경우 상속 대신 컴포지션을 권장(아이템18)하기 때문에 장점이라 말할지도 모르겠다.
 
+> Collections 예시
+```java
+public class Collections {
+    private Collections() { /* 인스턴스화 방지 */ }
+
+    public static <T> List<T> unmodifiableList(List<? extends T> list) { … }
+    // 이외 편의 메서드들…
+}
+```
+위 클래스를 상속하려면 protected Collections() 생성자가 반드시 있어야 하는데, 전부 private이라 불가능합니다.
+
 ## 2. 프로그래머가 static 팩토리 메소드를 찾는게 어렵다.
-생성자는 Javadoc 상단에 모아서 보여주지면 static 팩토리 메소드는 API 문서에서 특별히 다뤄주지 않는다. 따라서 클래스나 인터페이스 문서 상단에 팩토리 메소드에 대한 문서를 제공하는 것이 좋겠다.
+생성자는 Javadoc 상단에 모아서 보여주지면 static 팩토리 메소드는 API 문서에서 특별히 다뤄주지 않는다. 
+이를 위해서 아래처럼 하자.
+- 정적 팩토리 메서드 네이밍 컨벤션
+    - of, from, valueOf, create, getInstance 같은 일관된 이름을 쓰면 검색하기가 수월해집니다.
